@@ -369,12 +369,13 @@ bool AudioStream::doQueue (AVPacket* pkt) {
     return true;
 }
 
-void AudioStream::dequeuePacket () {
+bool AudioStream::dequeuePacket () {
     MyAVPacketList entry {};
+    bool got = false;
 
     SDL_LockMutex (this->m_queue->mutex);
 
-    while (this->m_audioContext.getApplicationContext ().state.general.keepRunning) {
+    {
 #if FF_API_FIFO_OLD_API
 	int ret = -1;
 
@@ -394,14 +395,12 @@ void AudioStream::dequeuePacket () {
 	    // move the reference and free the old one
 	    av_packet_move_ref (this->m_decodePacket, entry.packet);
 	    av_packet_free (&entry.packet);
-	    break;
+	    got = true;
 	}
-
-	// make the thread wait if nothing was available
-	SDL_CondWait (this->m_queue->cond, this->m_queue->mutex);
     }
 
     SDL_UnlockMutex (this->m_queue->mutex);
+    return got;
 }
 
 AVCodecContext* AudioStream::getContext () const { return this->m_context; }
@@ -639,7 +638,12 @@ int AudioStream::decodeFrame (uint8_t* audioBuffer, const int bufferSize) {
 	    av_packet_unref (this->m_decodePacket);
 	}
 
-	this->dequeuePacket ();
+	if (!this->dequeuePacket ()) {
+	    // nothing queued (reader behind, or a one-shot sound at its end): silence for now
+	    audio_pkt_size = 0;
+	    SDL_CondSignal (this->getWaitCondition ());
+	    return 0;
+	}
 
 	audio_pkt_size = this->m_decodePacket->size;
     }

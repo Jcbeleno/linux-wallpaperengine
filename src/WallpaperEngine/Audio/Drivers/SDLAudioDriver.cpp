@@ -44,13 +44,12 @@ void audio_callback (void* userdata, uint8_t* streamData, int length) {
 		// get more data to fill the buffer
 		int audio_size = buffer->stream->decodeFrame (buffer->audio_buf, sizeof (buffer->audio_buf));
 
-		if (audio_size < 0) {
-		    // fallback for errors, silence
-		    buffer->audio_buf_size = 1024;
-		    memset (buffer->audio_buf, 0, buffer->audio_buf_size);
-		} else {
-		    buffer->audio_buf_size = audio_size;
+		if (audio_size <= 0) {
+		    // no data right now (error, reader behind or stream ended): the rest stays silent
+		    buffer->audio_buf_size = buffer->audio_buf_index = 0;
+		    break;
 		}
+		buffer->audio_buf_size = audio_size;
 
 		buffer->audio_buf_index = 0;
 	    }

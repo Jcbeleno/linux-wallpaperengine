@@ -50,11 +50,12 @@ public:
     /**
      * Gets the next packet in the queue
      *
-     * WARNING: BLOCKS UNTIL SOME DATA IS READ FROM IT
+     * Never blocks: it runs on the mixer callback, and a finished one-shot sound gets no more packets
+     * until play(), so waiting here froze every sound of the wallpaper.
      *
-     * @return
+     * @return If a packet was available
      */
-    void dequeuePacket ();
+    bool dequeuePacket ();
 
     /**
      * @return The audio context in use for this audio stream
