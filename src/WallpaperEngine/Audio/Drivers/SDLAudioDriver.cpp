@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "SDLAudioDriver.h"
 #include "WallpaperEngine/Logging/Log.h"
 
@@ -25,9 +26,12 @@ void audio_callback (void* userdata, uint8_t* streamData, int length) {
 
 	// sound is not initialized or stopped and is not in loop mode
 	// ignore mixing it in
-	if (!buffer->stream->isInitialized ()) {
+	if (!buffer->stream->isInitialized () || buffer->stream->isPaused ()) {
 	    continue;
 	}
+	const int volume = static_cast<int> (
+	    driver->getApplicationContext ().state.audio.volume * std::clamp (buffer->stream->getVolume (), 0.0f, 1.0f)
+	);
 
 	// check if queue is empty and signal the read thread
 	if (buffer->stream->isQueueEmpty ()) {
@@ -59,8 +63,7 @@ void audio_callback (void* userdata, uint8_t* streamData, int length) {
 
 	    // mix the audio
 	    SDL_MixAudioFormat (
-		streamDataPointer, &buffer->audio_buf[buffer->audio_buf_index], driver->getSpec ().format, len1,
-		driver->getApplicationContext ().state.audio.volume
+		streamDataPointer, &buffer->audio_buf[buffer->audio_buf_index], driver->getSpec ().format, len1, volume
 	    );
 
 	    streamLength -= len1;
@@ -130,7 +133,15 @@ int SDLAudioDriver::addStream (AudioStream* stream) {
 
     return newStreamId;
 }
-void SDLAudioDriver::removeStream (int streamId) { this->m_streams.erase (streamId); }
+void SDLAudioDriver::removeStream (int streamId) {
+    // the mixer callback walks this list under the same lock
+    SDL_LockMutex (this->m_streamListMutex);
+    if (const auto it = this->m_streams.find (streamId); it != this->m_streams.end ()) {
+	delete it->second;
+	this->m_streams.erase (it);
+    }
+    SDL_UnlockMutex (this->m_streamListMutex);
+}
 
 const std::map<int, SDLAudioBuffer*>& SDLAudioDriver::getStreams () { return this->m_streams; }
 

@@ -25,7 +25,8 @@ int audio_read_thread (void* arg) {
 	    || (stream->getQueuePacketCount () > MIN_FRAMES
 		&& (av_q2d (stream->getTimeBase ()) * stream->getQueueDuration () > 1.0))) {
 	    SDL_LockMutex (waitMutex);
-	    SDL_CondWaitTimeout (stream->getWaitCondition (), waitMutex, 10);
+	    // paused streams are not drained: no need to check back often
+	    SDL_CondWaitTimeout (stream->getWaitCondition (), waitMutex, stream->isPaused () ? 250 : 10);
 	    SDL_UnlockMutex (waitMutex);
 	    continue;
 	}
@@ -37,8 +38,9 @@ int audio_read_thread (void* arg) {
 	    avformat_seek_file (stream->getFormatContext (), stream->getAudioStream (), 0, 0, 0, ~AVSEEK_FLAG_FRAME);
 	    avcodec_flush_buffers (stream->getContext ());
 
-	    // ensure the thread is not killed if audio has to be looped
-	    if (stream->isRepeat ()) {
+	    // ensure the thread is not killed if audio has to be looped, and keep one-shot sounds
+	    // around so scripts can play them again
+	    if (stream->isRepeat () || stream->waitForRestart (waitMutex)) {
 		ret = 0;
 	    }
 
@@ -435,6 +437,30 @@ int64_t AudioStream::getQueueDuration () const { return this->m_queue->duration;
 bool AudioStream::isQueueEmpty () const { return this->m_queue->nb_packets == 0; }
 
 SDL_mutex* AudioStream::getMutex () const { return this->m_queue->mutex; }
+
+void AudioStream::setPaused (bool paused) {
+    // shortcut: pausing keeps the position (stop() of a sound layer resumes where it was, not from the start)
+    this->m_paused = paused;
+    SDL_CondSignal (this->getWaitCondition ());
+}
+
+void AudioStream::play () {
+    this->m_ended = false;
+    this->setPaused (false);
+}
+
+bool AudioStream::isPlaying () const { return !this->m_paused && !(this->m_ended && this->isQueueEmpty ()); }
+
+bool AudioStream::waitForRestart (SDL_mutex* waitMutex) {
+    this->m_ended = true;
+    while (this->m_ended && this->isInitialized ()
+	   && this->m_audioContext.getApplicationContext ().state.general.keepRunning) {
+	SDL_LockMutex (waitMutex);
+	SDL_CondWaitTimeout (this->getWaitCondition (), waitMutex, 1000);
+	SDL_UnlockMutex (waitMutex);
+    }
+    return !this->m_ended;
+}
 
 void AudioStream::stop () {
     if (!this->isInitialized ()) {

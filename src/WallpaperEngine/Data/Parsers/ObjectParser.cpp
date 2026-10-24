@@ -118,6 +118,17 @@ SoundUniquePtr ObjectParser::parseSound (const JSON& it, ObjectData base) {
 	SoundData {
 	    .playbackmode = it.optional<std::string> ("playbackmode"),
 	    .sounds = sounds,
+	    .startsilent = it.optional<bool> ("startsilent").value_or (false),
+	    .volume = [&it] () {
+		// a number, or a setting bound to a user property ({"user": ..., "value": ...})
+		const auto volume = it.optional ("volume");
+		if (volume.has_value () && volume->is_object ()) {
+		    return volume->optional<float> ("value").value_or (1.0f);
+		}
+		return volume.has_value () && volume->is_number () ? volume->get<float> () : 1.0f;
+	    }(),
+	    .mintime = it.optional<float> ("mintime").value_or (0.0f),
+	    .maxtime = it.optional<float> ("maxtime").value_or (0.0f),
 	}
     );
 }

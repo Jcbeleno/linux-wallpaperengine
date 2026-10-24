@@ -137,6 +137,13 @@ struct SoundData {
     // TODO: WRITE AN ENUM FOR THIS
     std::optional<std::string> playbackmode;
     std::vector<std::string> sounds;
+    /** Scripts start it (music players): it does not play on load */
+    bool startsilent = false;
+    /** Layer volume, 0-1 */
+    float volume = 1.0f;
+    /** "random" mode: silence between two tracks, in seconds (a random value in [mintime, maxtime]) */
+    float mintime = 0.0f;
+    float maxtime = 0.0f;
 };
 
 class Sound : public Object, public SoundData {

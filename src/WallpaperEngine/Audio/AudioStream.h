@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <string>
 
 extern "C" {
@@ -88,6 +90,20 @@ public:
      */
     void stop ();
     /**
+     * Sound layer control from scripts: a paused stream is not mixed. A stream that does not repeat
+     * stays parked at its end until play() starts it over.
+     */
+    void setPaused (bool paused);
+    [[nodiscard]] bool isPaused () const { return this->m_paused; }
+    void play ();
+    /** Whether the stream is producing sound (not paused and not finished). */
+    [[nodiscard]] bool isPlaying () const;
+    /** Volume of this stream (0-1), on top of the global one. */
+    void setVolume (float volume) { this->m_volume = volume; }
+    [[nodiscard]] float getVolume () const { return this->m_volume; }
+    /** Reader thread: marks the end of a non-repeating stream and waits for play() (false = shut down). */
+    bool waitForRestart (SDL_mutex* waitMutex);
+    /**
      * @return The file data buffer
      */
     [[nodiscard]] ReadStreamSharedPtr& getBuffer ();
@@ -165,6 +181,9 @@ private:
     bool m_initialized = false;
     /** Repeat enabled? */
     bool m_repeat = false;
+    std::atomic<bool> m_paused = false;
+    std::atomic<bool> m_ended = false;
+    std::atomic<float> m_volume = 1.0f;
     /** The codec context that contains the original audio format information */
     AVCodecContext* m_context = nullptr;
     /** The format context that controls how data is read off the file */
